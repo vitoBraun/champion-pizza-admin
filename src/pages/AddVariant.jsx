@@ -1,34 +1,90 @@
 import React, { useState, useEffect, useContext, useCallback } from "react";
 import { AuthContext } from "../context/AuthContext";
 import { useHttp } from "../hooks/http.hook";
-import ItemsList from "../components/ItemsList";
-import { fetchCategories } from "../actions/fetchCategories";
-import { fetchProductsByCategory } from "../actions/fetchProducts";
-import { fetchProductVariants } from "../actions/fetchProductVariants";
+import VariantList from "../components/VariantList/VariantList";
 import SubmitButton from "../components/SubmitButton";
 import { Form, Card } from "react-bootstrap";
 import AlertBlock from "../components/AlertBlock";
+import { fetchProducts } from "../redux/actions/products";
+import { useDispatch, useSelector } from "react-redux";
 
 export const AddVariant = () => {
   const { request, error, loading, clearError } = useHttp();
   const { token } = useContext(AuthContext);
 
-  const [categories, setCategories] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState("");
+  const isLoaded = useSelector(({ products }) => products.isLoaded);
+  const items = useSelector(({ products }) => products.items);
 
-  const [products, setProducts] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState(
+    localStorage.getItem("selectedCategory")
+      ? localStorage.getItem("selectedCategory")
+      : ""
+  );
+
   const [selectedProduct, setSelectedProduct] = useState("");
-
-  const [productVariants, setProductVariants] = useState([]);
 
   const [variantName, setVariantName] = useState("");
   const [price, setPrice] = useState("");
   const [weight, setWeight] = useState("");
 
   const [buttonDisabled, setButtonDisabled] = useState(true);
+  const [productId, setProductId] = useState("");
 
   const [noticeError, setNoticeError] = useState(false);
   const [notice, setNotice] = useState(false);
+
+  const dispatch = useDispatch();
+  useEffect(() => {
+    dispatch(fetchProducts());
+  }, []);
+
+  const saveSelectedCategory = useCallback((categoryName) => {
+    setSelectedCategory(categoryName);
+    localStorage.setItem("selectedCategory", categoryName);
+  }, []);
+
+  useEffect(() => {
+    if (isLoaded) {
+      setSelectedCategory(
+        localStorage.getItem("selectedCategory")
+          ? localStorage.getItem("selectedCategory")
+          : items[0].categoryName
+      );
+      setProductId(
+        items.filter(
+          (category) => category.categoryName === selectedCategory
+        )[0]?.products[0]?._id
+      );
+    }
+  }, [isLoaded, items]);
+
+  useEffect(() => {
+    setSelectedProduct(
+      items.filter((category) => category.categoryName === selectedCategory)[0]
+        ?.products[0]?.name
+    );
+  }, [selectedCategory]);
+
+  useEffect(() => {
+    setProductId(
+      items.filter((category) => category.categoryName === selectedCategory)[0]
+        ?.products[0]._id
+    );
+    setSelectedProduct(
+      items.filter((category) => category.categoryName === selectedCategory)[0]
+        ?.products[0]?.name
+    );
+  }, []);
+
+  // useEffect(() => {
+  //   setProductId(
+  //     items
+  //       .filter((category) => category.categoryName === selectedCategory)[0]
+  //       ?.products.filter((product) => product.name === selectedProduct)[0]?._id
+  //   );
+  // }, [selectedProduct]);
+
+  console.log(productId, selectedProduct);
 
   const CheckAllErrors = useCallback(async () => {
     if (variantName !== "" && price !== "") {
@@ -38,45 +94,6 @@ export const AddVariant = () => {
     }
   }, [variantName, price]);
 
-  const Categories = useCallback(async () => {
-    const categories = await fetchCategories(token, request);
-    if (categories.length !== 0) {
-      setCategories(categories);
-      setSelectedCategory(categories[0].categoryName);
-    }
-  }, [token, request]);
-
-  const Products = useCallback(async () => {
-    const products = await fetchProductsByCategory(
-      token,
-      request,
-      selectedCategory
-    );
-    setProducts(products);
-    setSelectedProduct(products[0].name);
-  }, [token, request, selectedCategory]);
-
-  const ProductVariants = useCallback(async () => {
-    const productVariants = await fetchProductVariants(
-      token,
-      request,
-      selectedProduct
-    );
-    setProductVariants(productVariants);
-  }, [token, request, selectedProduct]);
-
-  useEffect(() => {
-    Categories();
-  }, [Categories]);
-
-  useEffect(() => {
-    Products();
-  }, [Products]);
-
-  useEffect(() => {
-    ProductVariants();
-  }, [ProductVariants]);
-
   useEffect(() => {
     CheckAllErrors();
   }, [CheckAllErrors]);
@@ -85,29 +102,10 @@ export const AddVariant = () => {
     setNoticeError(error);
   }, [error]);
 
-  const categoryHandler = (event) => {
-    setSelectedCategory(event.target.value);
-  };
-
-  const productHandler = (event) => {
-    setSelectedProduct(event.target.value);
-  };
-
-  const productVariantDelete = async (variantId) => {
-    try {
-      await request("/api/productVariant/" + variantId, "DELETE", null, {
-        Authorization: `Bearer ${token}`,
-      });
-      ProductVariants();
-    } catch (error) {
-      console.log(error);
-    }
-  };
-
   const submitVariant = async () => {
     try {
       await request(
-        "/api/productVariant/add",
+        "/api/variant/add",
         "POST",
         JSON.stringify({
           variantName: variantName,
@@ -115,6 +113,7 @@ export const AddVariant = () => {
           weight: weight,
           categoryName: selectedCategory,
           productName: selectedProduct,
+          productId: productId,
         }),
         {
           "Content-Type": "application/json",
@@ -122,11 +121,11 @@ export const AddVariant = () => {
         }
       );
       if (!error && !loading) {
+        dispatch(fetchProducts());
         setNotice("Вариант добавлен");
         setVariantName("");
         setPrice("");
         setWeight("");
-        ProductVariants();
       }
     } catch (error) {
       console.log(error);
@@ -148,8 +147,13 @@ export const AddVariant = () => {
         <Form>
           <Form.Group className="mb-3" controlId="category">
             <Form.Label>Категория</Form.Label>
-            <Form.Select onChange={categoryHandler}>
-              {categories.map((category) => (
+            <Form.Select
+              onChange={(event) => {
+                saveSelectedCategory(event.target.value);
+              }}
+              value={selectedCategory}
+            >
+              {items.map((category) => (
                 <option key={category._id} value={category.categoryName}>
                   {category.categoryName}
                 </option>
@@ -159,12 +163,30 @@ export const AddVariant = () => {
 
           <Form.Group className="mb-3" controlId="category">
             <Form.Label>Продукт</Form.Label>
-            <Form.Select onChange={productHandler}>
-              {products.map((product) => (
-                <option key={product.name} value={product.name}>
-                  {product.name} {}
-                </option>
-              ))}
+            <Form.Select
+              onChange={(event) => {
+                setSelectedProduct(event.target.value);
+
+                const prodId = items
+                  .filter(
+                    (category) => category?.categoryName === selectedCategory
+                  )[0]
+                  ?.products.filter(
+                    (product) => product?.name === event.target.value
+                  )[0]?._id;
+                setProductId(prodId);
+              }}
+              value={selectedProduct}
+            >
+              {items.map(
+                (category) =>
+                  category?.categoryName === selectedCategory &&
+                  category?.products.map((product) => (
+                    <option key={product._id} value={product.name}>
+                      {product.name}
+                    </option>
+                  ))
+              )}
             </Form.Select>
           </Form.Group>
 
@@ -206,13 +228,11 @@ export const AddVariant = () => {
             buttonDisabled={buttonDisabled}
           />
 
-          {productVariants.length > 0 && (
-            <ItemsList
-              items={productVariants}
-              itemName="variantName"
-              delFunc={productVariantDelete}
-            />
-          )}
+          <VariantList
+            selectedCategory={selectedCategory}
+            selectedProduct={selectedProduct}
+            items={items}
+          />
         </Form>
       </Card.Body>
     </>

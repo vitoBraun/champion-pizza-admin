@@ -8,12 +8,12 @@ import React, {
 import { useHttp } from "../hooks/http.hook";
 import { AuthContext } from "../context/AuthContext";
 import { Col, Form, Card } from "react-bootstrap";
-import ProductsList from "../components/ProductsList";
-import { fetchCategories } from "../actions/fetchCategories";
-import { fetchProductsByCategory } from "../actions/fetchProducts";
+import ProductList from "../components/ProductList/ProductList";
 import { transliterate } from "../actions/transliterate";
 import SubmitButton from "../components/SubmitButton";
 import AlertBlock from "../components/AlertBlock";
+import { useSelector, useDispatch } from "react-redux";
+import { fetchProducts } from "../redux/actions/products";
 
 export const AddProduct = () => {
   const { request, loading, error, clearError } = useHttp();
@@ -23,9 +23,14 @@ export const AddProduct = () => {
   const [description, setDescription] = useState("");
   const [img, setImg] = useState(null);
 
-  const [categories, setCategories] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState("");
+  const isLoaded = useSelector(({ products }) => products.isLoaded);
+  const items = useSelector(({ products }) => products.items);
+
+  const [selectedCategory, setSelectedCategory] = useState(
+    localStorage.getItem("selectedCategory")
+      ? localStorage.getItem("selectedCategory")
+      : ""
+  );
 
   const [noticeError, setNoticeError] = useState(false);
   const [notice, setNotice] = useState(false);
@@ -34,22 +39,26 @@ export const AddProduct = () => {
 
   const inputRef = useRef();
 
-  const Categories = useCallback(async () => {
-    const categories = await fetchCategories(token, request);
-    if (categories.length !== 0) {
-      setCategories(categories);
-      setSelectedCategory(categories[0].categoryName);
-    }
-  }, [token, request]);
+  const dispatch = useDispatch();
 
-  const Products = useCallback(async () => {
-    const products = await fetchProductsByCategory(
-      token,
-      request,
-      selectedCategory
-    );
-    setProducts(products);
-  }, [token, request, selectedCategory]);
+  useEffect(() => {
+    dispatch(fetchProducts());
+  });
+
+  const saveSelectedCategory = useCallback((categoryName) => {
+    setSelectedCategory(categoryName);
+    localStorage.setItem("selectedCategory", categoryName);
+  }, []);
+
+  useEffect(() => {
+    if (isLoaded) {
+      setSelectedCategory(
+        localStorage.getItem("selectedCategory")
+          ? localStorage.getItem("selectedCategory")
+          : items[0]?.categoryName
+      );
+    }
+  }, [isLoaded, items]);
 
   const CheckAllErrors = useCallback(async () => {
     if ((name !== "") & (img !== null) && selectedCategory !== "") {
@@ -58,33 +67,6 @@ export const AddProduct = () => {
       setButtonDisabled(true);
     }
   }, [name, img, selectedCategory]);
-
-  const productDelete = async (productId) => {
-    try {
-      await request("/api/product/" + productId, "DELETE", null, {
-        Authorization: `Bearer ${token}`,
-      });
-      Products();
-    } catch (error) {
-      console.log(error);
-    }
-  };
-
-  const categoryHandler = (event) => {
-    setSelectedCategory(event.target.value);
-  };
-
-  useEffect(() => {
-    setNoticeError(error);
-  }, [error]);
-
-  useEffect(() => {
-    Categories();
-  }, [Categories]);
-
-  useEffect(() => {
-    Products();
-  }, [Products]);
 
   useEffect(() => {
     CheckAllErrors();
@@ -105,7 +87,7 @@ export const AddProduct = () => {
       imgFormData.append("fileNameTranslit", fileNameTranslit);
       imgFormData.append("uploadSecret", "Bdsfjhsfdkjfsd");
 
-      await request("/api/uploadImage", "POST", imgFormData, {
+      await request("/api/uploadimage", "POST", imgFormData, {
         headres: {
           "Content-Type": "multipart/form-data",
         },
@@ -129,7 +111,7 @@ export const AddProduct = () => {
           }
         );
 
-        Products();
+        dispatch(fetchProducts());
         setName("");
         setImg(null);
         setDescription("");
@@ -138,6 +120,7 @@ export const AddProduct = () => {
       }
     } catch (error) {
       console.log(error);
+      setNoticeError(error);
     }
   };
 
@@ -155,8 +138,14 @@ export const AddProduct = () => {
       >
         <Form.Group className="mb-3" controlId="category">
           <Form.Label>Категория</Form.Label>
-          <Form.Select onChange={categoryHandler}>
-            {categories.map((category) => (
+          <Form.Select
+            onChange={(e) => {
+              saveSelectedCategory(e.target.value);
+              // setSelectedCategory(e.target.value);
+            }}
+            value={selectedCategory}
+          >
+            {items.map((category) => (
               <option key={category._id} value={category.categoryName}>
                 {category.categoryName}
               </option>
@@ -205,15 +194,7 @@ export const AddProduct = () => {
             buttonDisabled={buttonDisabled}
           />
         </Form.Group>
-        {products.length > 0 && (
-          <ProductsList
-            type="product"
-            items={products}
-            setItems={setProducts}
-            delFunc={productDelete}
-            token={token}
-          />
-        )}
+        <ProductList selectedCategory={selectedCategory} items={items} />
       </Card.Body>
     </>
   );

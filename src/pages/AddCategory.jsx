@@ -1,19 +1,19 @@
-import React, { useState, useEffect, useContext, useCallback } from "react";
-// import Select from 'react-select';
+import React, { useEffect, useState, useContext, useCallback } from "react";
+
 import { useHttp } from "../hooks/http.hook";
 import { AuthContext } from "../context/AuthContext";
-// import {useNavigate} from 'react-router-dom'
+import { fetchProducts } from "../redux/actions/products";
+import { useDispatch } from "react-redux";
 import { Card, Form } from "react-bootstrap";
-import ItemsList from "../components/ItemsList";
-import { fetchCategories } from "../actions/fetchCategories";
+import CategoryList from "../components/CategoryList/CategoryList";
+
 import SubmitButton from "../components/SubmitButton";
 import AlertBlock from "../components/AlertBlock";
 
 export const AddCategory = () => {
-  const auth = useContext(AuthContext);
   const { request, error, loading, clearError } = useHttp();
+  const dispatch = useDispatch();
   const [categoryName, setСategoryName] = useState("");
-  const [categories, setCategories] = useState([]);
 
   const [buttonDisabled, setButtonDisabled] = useState(true);
 
@@ -21,10 +21,6 @@ export const AddCategory = () => {
   const [notice, setNotice] = useState(false);
 
   const { token } = useContext(AuthContext);
-
-  const Categories = useCallback(async () => {
-    setCategories(await fetchCategories(token, request));
-  }, [token, request]);
 
   const CheckAllErrors = useCallback(async () => {
     if (categoryName !== "") {
@@ -46,29 +42,13 @@ export const AddCategory = () => {
         }
       );
       if (!error && !loading) {
-        Categories();
+        dispatch(fetchProducts());
         setСategoryName("");
       }
     } catch (error) {
       console.log(error);
     }
   };
-
-  const categoryDelete = async (categoryId) => {
-    try {
-      await request("/api/category/" + categoryId, "DELETE", null, {
-        Authorization: `Bearer ${auth.token}`,
-      });
-      Categories();
-      // console.log(categoryId);
-    } catch (error) {
-      console.log(error);
-    }
-  };
-
-  useEffect(() => {
-    Categories();
-  }, [Categories]);
 
   useEffect(() => {
     CheckAllErrors();
@@ -92,7 +72,7 @@ export const AddCategory = () => {
       >
         <blockquote className="blockquote mb-0">
           <Form.Group className="mb-3" controlId="addproduct">
-            {/* <Form.Label>Название категории</Form.Label> */}
+            <Form.Label>Название категории</Form.Label>
             <Form.Control
               type="name"
               placeholder="Введите название категории"
@@ -109,14 +89,7 @@ export const AddCategory = () => {
           </Form.Group>
         </blockquote>
       </Card.Body>
-
-      {categories.length > 0 && (
-        <ItemsList
-          items={categories}
-          itemName="categoryName"
-          delFunc={categoryDelete}
-        />
-      )}
+      <CategoryList />
     </>
   );
 };
